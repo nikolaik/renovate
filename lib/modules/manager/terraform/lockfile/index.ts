@@ -134,6 +134,7 @@ export async function updateArtifacts({
 }: UpdateArtifact): Promise<UpdateArtifactsResult[] | null> {
   logger.debug(`terraform.updateArtifacts(${packageFileName})`);
 
+  // FIXME: This finds the same lockfile for both the root and subdirs
   const lockFilePath = await findLockFile(packageFileName);
 
   if (!lockFilePath) {
@@ -153,6 +154,14 @@ export async function updateArtifacts({
       return null;
     }
 
+    console.log('🔥 config', config);
+    console.log('🔥🔥 packageFileName', packageFileName);
+    // TODO: extract modules from packageFileName in extract.ts
+    // TODO: look at extracted modules in packageFileName and update them
+    // TODO: bail if a packageFileName's lockFilePath points to the same lockFilePath which this module is also part of
+    // We can safely bail, since the lockfile will be updated in the packageFileName
+    // TODO: For packageFileNames that have submodules, take those provider deps into account
+
     const updates: ProviderLockUpdate[] = [];
     if (config.isLockFileMaintenance) {
       // update all locks in the file during maintenance --> only update version in constraints
@@ -163,6 +172,7 @@ export async function updateArtifacts({
         // TODO #22198
         ['provider', 'required_provider'].includes(dep.depType!),
       );
+      console.log('🔥🔥🔥 providerDeps', providerDeps.slice(-1));
       logger.debug(`Found ${providerDeps.length} provider deps`);
       for (const dep of providerDeps) {
         massageProviderLookupName(dep);
@@ -218,18 +228,12 @@ export async function updateArtifacts({
       logger.debug('No updates found or hash creation failed');
       return null;
     }
+    // FIXME: The same lockfile is updated for each package file, meaning the last writer wins (usually a module in a subdir)
     logger.debug(`Writing updates to ${lockFilePath}`);
     const res = writeLockUpdates(updates, lockFilePath, lockFileContent);
     return [res];
   } catch (err) {
     /* istanbul ignore next */
-    return [
-      {
-        artifactError: {
-          lockFile: lockFilePath,
-          stderr: err.message,
-        },
-      },
-    ];
+    return [{ artifactError: { lockFile: lockFilePath, stderr: err.message } }];
   }
 }
